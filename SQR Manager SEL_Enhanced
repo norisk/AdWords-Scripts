@@ -1,6 +1,7 @@
+// Modified and v201502 compatible version of http://searchengineland.com/adwords-scripts-every-level-part-4-search-query-manager-free-script-included-212341
 // Use copy of https://docs.google.com/a/gryffin.com/spreadsheets/d/1N99Vyzn61mQqIwnFQ7CucplSSAA0HnEM3zzxlOcyY2Q/edit#gid=160145074
 
-var SQR_MANAGER_URL = '$$URL hier eingeben$$';  // $$URL hier eingeben$$ durch Spreadsheet-URL ersetzen 
+var SQR_MANAGER_URL = '$$Enter Spreadsheet URL here$$';  // Swap $$Enter Spreadsheet URL here$$ with actual Spreadsheet-URL
 
 var spreadsheetAccess = new SpreadsheetAccess(SQR_MANAGER_URL, 'Export Rules');
 var totalColumns;
