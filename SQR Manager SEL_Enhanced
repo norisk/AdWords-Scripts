@@ -1,6 +1,6 @@
 // Use copy of https://docs.google.com/a/gryffin.com/spreadsheets/d/1N99Vyzn61mQqIwnFQ7CucplSSAA0HnEM3zzxlOcyY2Q/edit#gid=160145074
 
-var SQR_MANAGER_URL = '$$URL hier eingeben$$';  // $$URL hier eingeben$$ durch Spreadsheet-URL ersetzen
+var SQR_MANAGER_URL = '$$URL hier eingeben$$';  // $$URL hier eingeben$$ durch Spreadsheet-URL ersetzen 
 
 var spreadsheetAccess = new SpreadsheetAccess(SQR_MANAGER_URL, 'Export Rules');
 var totalColumns;
@@ -77,7 +77,7 @@ function exportData() {
   
   /**var headerRow = ['Rule', 'Campaign', 'AdGroup', 'KeywordTextMatchingQuery','Query', 'Match Type', 
   'Impressions','Clicks','Cost','Ctr','Average Cpc',
-  'Conversions','CPA','Conversion Rate','Average Position'];**/
+  'ConvertedClicks','CostPerConvertedClick','ClickConversionRate','Average Position'];**/
   
   var reportData = [];  
   while (row != null) {
@@ -109,8 +109,8 @@ function exportData() {
     
     var OPTIONS = { includeZeroImpressions : false };
     var cols = ['CampaignName','AdGroupName', 'KeywordTextMatchingQuery','Query', 'MatchType','Impressions','Clicks',
-                'Cost','Ctr','AverageCpc','Conversions','CostPerConversion',
-                'ConversionRate','AveragePosition'];
+                'Cost','Ctr','AverageCpc','ConvertedClicks','CostPerConvertedClick',
+                'ClickConversionRate','AveragePosition'];
     
     var report = 'SEARCH_QUERY_PERFORMANCE_REPORT';
     
@@ -142,11 +142,11 @@ function exportData() {
     var numRows = reportSheet.getLastRow();
     reportSheet.getRange(3, 7, numRows, 1).setNumberFormat("#,##0"); //Impressions
     reportSheet.getRange(3, 8, numRows, 1).setNumberFormat("#,##0"); // Clicks
-    reportSheet.getRange(3, 9, numRows, 1).setNumberFormat("$#,##0.00"); //Cost
+    reportSheet.getRange(3, 9, numRows, 1).setNumberFormat("€#,##0.00"); //Cost
     reportSheet.getRange(3, 10, numRows, 1).setNumberFormat("0.00%"); //Ctr
-    reportSheet.getRange(3, 11, numRows, 1).setNumberFormat("$#,##0.00"); //Cost
+    reportSheet.getRange(3, 11, numRows, 1).setNumberFormat("€#,##0.00"); //Cost
     reportSheet.getRange(3, 12, numRows, 1).setNumberFormat("#,##0"); //Conversions
-    reportSheet.getRange(3, 13, numRows, 1).setNumberFormat("$#,##0.00"); //CPA
+    reportSheet.getRange(3, 13, numRows, 1).setNumberFormat("€#,##0.00"); //CPA
     reportSheet.getRange(3, 14, numRows, 1).setNumberFormat("0.00%"); //CR
     reportSheet.getRange(3, 15, numRows, 1).setNumberFormat("#,##0.0"); //Avg Pos             
     
