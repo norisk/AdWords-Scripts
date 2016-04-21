@@ -19,7 +19,10 @@
 
 /***************** CONFIG_BLOCK START *****************/
  
-  // Find the spreadsheet here: 
+  // Make a copy of the demo spreadsheet and enter the ID belos
+  // Demo spreadsheet: https://docs.google.com/spreadsheets/d/1nPT1tL2EAh_KA1yIBuy-qelZpbvuvc8wE9Hshu4jdnA/edit#gid=0
+  // IMPORTANT: Make sure to LABEL your active accounts with "ACTIVE"
+  
   var SPREADSHEET_ID = 'SPREADSHEET_ID';
 
 /***************** CONFIG_BLOCK START *****************/
