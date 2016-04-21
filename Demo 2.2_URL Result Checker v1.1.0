@@ -32,7 +32,7 @@ var SEARCH_PAGE_TYPE = "searchparam";           // Specify the URL-Query which i
 var LABEL_CONFIG = "URL_404_ERROR_PAUSED";     // Specify the Label you want to apply to automatically paused ads.
 var NO_RESULT_ATTR = 'listartcount nrSearchRecommMessage ';// Specify the tag Class or id which identifies a "No-result"-search.
 var TEILERGEBNIS = 'listartcount nrSearchRecommMessage  nrListSearch';
-var SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1S29gLvMkh_p8ODBSgjecmfaXmc-0yHEfQPBdmzC7dRg/edit#gid=0';
+var SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1S29gLvMkh_p8ODBSgjecmfaXmc-0yHEfQPBdmzC7dRg/edit#gid=0'; // Demo-Spreadsheet
 var DATE_RANGE = 'LAST_30_DAYS';//TODAY, YESTERDAY, LAST_7_DAYS, THIS_WEEK_SUN_TODAY, LAST_WEEK, LAST_14_DAYS, LAST_30_DAYS, LAST_BUSINESS_WEEK, LAST_WEEK_SUN_SAT, THIS_MONTH, LAST_MONTH, ALL_TIME
 var RESULT_COUNT_CLASS = 'listartcount';
 var ARTICLE_DETAIL_PARAM = '.html';
