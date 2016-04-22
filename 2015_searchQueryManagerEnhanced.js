@@ -109,13 +109,13 @@ function exportData() {
     }
     
     var OPTIONS = { includeZeroImpressions : false };
-    var cols = ['CampaignName','AdGroupName', 'KeywordTextMatchingQuery','Query', 'MatchType','Impressions','Clicks',
+    var cols = ['CampaignName','AdGroupName', 'KeywordTextMatchingQuery','Query', 'QueryMatchTypeWithVariant','Impressions','Clicks',
                 'Cost','Ctr','AverageCpc','ConvertedClicks','CostPerConvertedClick',
                 'ClickConversionRate','AveragePosition'];
     
     var report = 'SEARCH_QUERY_PERFORMANCE_REPORT';
     
-    var query = ['select',cols.join(','),'from',report,
+    var query = ['select',cols.join(','),'from', report,
                  'where Impressions > 0',
                  conditions.length > 0 ? 'and ' + conditions.join(' and ') : '',
                  'during',DATE_RANGE].join(' ');
