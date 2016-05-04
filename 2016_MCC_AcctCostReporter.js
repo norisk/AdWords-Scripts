@@ -1,6 +1,6 @@
 /**
 *   Account Cost Reporter
-*   Version: 1.0.0
+*   Version: 1.2.0
 *   @author: Christopher Gutknecht
 *   norisk GmbH
 *   cgutknecht@noriskshop.de
@@ -19,11 +19,8 @@
 
 /***************** CONFIG_BLOCK START *****************/
  
-  // Make a copy of the demo spreadsheet and enter your own ID below in the variable "SPREADSHEET_ID"
-  // Demo spreadsheet: https://docs.google.com/spreadsheets/d/1nPT1tL2EAh_KA1yIBuy-qelZpbvuvc8wE9Hshu4jdnA/edit#gid=0
-  // IMPORTANT: Make sure to LABEL your active accounts with "ACTIVE"
-  
-  var SPREADSHEET_ID = 'SPREADSHEET_ID';
+  // Find the spreadsheet here: https://docs.google.com/spreadsheets/d/15OfBFt3i0U-m-zyTXx2cWu8fu2CW1jiRe7J7H9qb2-0/edit#gid=850842802 
+  var SPREADSHEET_ID = '15OfBFt3i0U-m-zyTXx2cWu8fu2CW1jiRe7J7H9qb2-0';
 
 /***************** CONFIG_BLOCK START *****************/
 
@@ -38,7 +35,7 @@ function main() {
   var currentDateNoHyphen = currentDatewithHyphen.replace(/-/g,'');
   var dateYesterdayArray = currentDatewithHyphen.split("-");
   dateYesterdayArray[2] = dateYesterdayArray[2] - 1;
-  var dateYesterday = dateYesterdayArray.join().replace(/,/g,'');  
+  var dateYesterdayNoHyphen = new Date(new Date().setDate(new Date().getDate()-1)).toJSON().slice(0,10).replace(/-/g,'');
   
   var completedDays = dateYesterdayArray[2];
   var currentMonth = dateYesterdayArray[1];
@@ -74,6 +71,7 @@ function main() {
   //////
   // 2. Selecting the accounts
   //////
+
   
   var accountSelector = MccApp.accounts()  
   .withCondition("LabelNames CONTAINS 'ACTIVE'")
@@ -85,7 +83,7 @@ function main() {
   var spreadsheetContent = [];
   while (accountIterator.hasNext()) {
     var account = accountIterator.next();
-    var stats = account.getStatsFor(firstDayOfCurrentMonth, dateYesterday);
+    var stats = account.getStatsFor(firstDayOfCurrentMonth, dateYesterdayNoHyphen);
     var accountName = account.getName() ? account.getName() : '--';
     spreadsheetContent.push([account.getCustomerId(), account.getName(), account.getCurrencyCode(), stats.getCost()]);
   }
@@ -103,7 +101,7 @@ function main() {
   // Set time info table
   var sheetSidebar = ss.getSheets()[0];
   sheet.getRange('k:k').clear();
-  var spreadsheetSidebar = [['CurrentDates', 'Values'],['dateYesterday', dateYesterday],['currentMonth', currentMonth], 
+  var spreadsheetSidebar = [['CurrentDates', 'Values'],['dateYesterday', dateYesterdayNoHyphen],['currentMonth', currentMonth], 
                             ['currentYear', currentYear],['isNonLeapYear', currentYearType],
                             ['lastDateOfCurrentMonth', lastDateOfCurrentMonth],['completedDays', completedDays],['lastDayOfCurrentMonth', lastDayOfCurrentMonth],['numberOfRemainingDays', numberOfRemainingDays]];
   sheet.getRange('l1:m9').setValues(spreadsheetSidebar);
@@ -153,7 +151,7 @@ function main() {
   var yesterdayCostContent = [];
   while (accountIterator.hasNext()) {
     var account = accountIterator.next();
-    var stats = account.getStatsFor(dateYesterday, dateYesterday);
+    var stats = account.getStatsFor(dateYesterdayNoHyphen, dateYesterdayNoHyphen);
     var accountName = account.getName() ? account.getName() : '--';
     yesterdayCostContent.push([account.getName(), stats.getCost()]);
   }
