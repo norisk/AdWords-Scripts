@@ -1,9 +1,18 @@
 /**
 *   Account Cost Reporter
-*   Version: 1.2.0
+*   Version: 1.1.3
 *   @author: Christopher Gutknecht
 *   norisk GmbH
 *   cgutknecht@noriskshop.de
+*
+* Changes 1.3. 
+* - Encapsulated logic into separate functions
+* - Fixed monthAsInt bug
+*
+* TODO: 2.0 REDEFINITION based on objects
+* sheet object (writeToSheet, getRange, getLastRow, sortSheet, vlookupIter)
+* dateInfo object (getToday, getYesterday, getMonth, getYear, geteofmonth
+* dataGetter object
 *
 * THIS SOFTWARE IS PROVIDED BY norisk GMBH ''AS IS'' AND ANY
 * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
@@ -16,7 +25,6 @@
 * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
-
 /***************** CONFIG_BLOCK START *****************/
  
   // Find the spreadsheet here: https://docs.google.com/spreadsheets/d/15OfBFt3i0U-m-zyTXx2cWu8fu2CW1jiRe7J7H9qb2-0/edit#gid=850842802 
@@ -26,157 +34,157 @@
 
 function main() {
   
+  var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getActiveSheet();
+  var firstDayofMonthAndYesterday = setTimeInfoSidebar(sheet);
   
-  ///////
-  // 1. Setting the DATE variables via helper functions
-  ///////
-  
-  var currentDatewithHyphen = new Date().toJSON().slice(0,10);
-  var currentDateNoHyphen = currentDatewithHyphen.replace(/-/g,'');
-  var dateYesterdayArray = currentDatewithHyphen.split("-");
-  dateYesterdayArray[2] = dateYesterdayArray[2] - 1;
-  var dateYesterdayNoHyphen = new Date(new Date().setDate(new Date().getDate()-1)).toJSON().slice(0,10).replace(/-/g,'');
-  
-  var completedDays = dateYesterdayArray[2];
-  var currentMonth = dateYesterdayArray[1];
-  var currentYear = dateYesterdayArray[0];
-  var currentYearType = isNonLeapYear(currentYear);
-  var firstDayOfCurrentMonth = dateYesterdayArray[0] + dateYesterdayArray[1] + '01';
-  
-  function isNonLeapYear(currentYear) {
-    var daysPerMonthNonLeapYear = [0,31,28,31,30,31,30,31,31,30,31,30,31];
-    var daysPerMonthLeapYear = [0,31,29,31,30,31,30,31,31,30,31,30,31];
-    if(currentYear % 4 === 0) {return false;} 
-    else if (currentYear % 400 === 0 && currentYear % 100 === 0)
-    {return false;}
-    return true;
-  }	
-  
-  var currentMonthAsInt = parseInt(currentMonth);
-  
-  function getLastDayofMonth(monthAsInt, year) {
-    var daysPerMonthNonLeapYear = [0,31,28,31,30,31,30,31,31,30,31,30,31];
-    var daysPerMonthLeapYear = [0,31,29,31,30,31,30,31,31,30,31,30,31];
-    
-    if (isNonLeapYear(year) == true) {
-      return daysPerMonthNonLeapYear[monthAsInt];
-    }
-    return daysPerMonthLeapYear[monthAsInt]; 
-  }
-  
-  var lastDayOfCurrentMonth = getLastDayofMonth(currentMonthAsInt,currentYear);
-  var lastDateOfCurrentMonth = dateYesterdayArray[0] + dateYesterdayArray[1] + lastDayOfCurrentMonth;
-  var numberOfRemainingDays = lastDayOfCurrentMonth - completedDays;
-  
-  //////
-  // 2. Selecting the accounts
-  //////
-
-  
-  var accountSelector = MccApp.accounts()  
-  .withCondition("LabelNames CONTAINS 'ACTIVE'")
-  .forDateRange("THIS_MONTH")
-  .orderBy("Cost DESC"); 
-  
-  // Pushing account data into spreadsheet Content array
-  var accountIterator = accountSelector.get(); 
-  var spreadsheetContent = [];
-  while (accountIterator.hasNext()) {
-    var account = accountIterator.next();
-    var stats = account.getStatsFor(firstDayOfCurrentMonth, dateYesterdayNoHyphen);
-    var accountName = account.getName() ? account.getName() : '--';
-    spreadsheetContent.push([account.getCustomerId(), account.getName(), account.getCurrencyCode(), stats.getCost()]);
-  }
-  
-  // Access and clear spreadsheet
-  var ss = SpreadsheetApp.openById('15OfBFt3i0U-m-zyTXx2cWu8fu2CW1jiRe7J7H9qb2-0');
-  var sheet = ss.getActiveSheet();
+  var acctDataMonth = getAccountsStats("LAST_MONTH", firstDayofMonthAndYesterday[0], firstDayofMonthAndYesterday[1]);
   sheet.getRange('a1:d50').clear();
-  
-  // Set the header
-  var sheetHeader = ss.getSheets()[0];
-  var spreadsheetHeader = [['CustomerID', 'AccountName', 'Currency', 'CostThisMonth']];
-  sheet.getRange('a1:d1').setValues(spreadsheetHeader);
-  
-  // Set time info table
-  var sheetSidebar = ss.getSheets()[0];
-  sheet.getRange('k:k').clear();
-  var spreadsheetSidebar = [['CurrentDates', 'Values'],['dateYesterday', dateYesterdayNoHyphen],['currentMonth', currentMonth], 
-                            ['currentYear', currentYear],['isNonLeapYear', currentYearType],
-                            ['lastDateOfCurrentMonth', lastDateOfCurrentMonth],['completedDays', completedDays],['lastDayOfCurrentMonth', lastDayOfCurrentMonth],['numberOfRemainingDays', numberOfRemainingDays]];
-  sheet.getRange('l1:m9').setValues(spreadsheetSidebar);
-  
-  // Write spreadsheetContent to sheet
-  var spreadValArray = [];
-  var spreadRows = [];
-  for (var i=0;i < spreadsheetContent.length-1;i++) {
-    spreadRows=[];
-    for (var j=0; j< spreadsheetContent[0].length;j++){
-      spreadRows.push(spreadsheetContent[i][j]);
-    }
-    spreadValArray.push(spreadRows);
-  }
-  
-  var destinationRange = sheet.getRange(2, 1, i, j);
-  destinationRange.setValues(spreadValArray);
-  Logger.log('Report content successfully printed to spreadsheet.');
+  sheet.getRange('a1:d1').setValues([['CustomerID', 'AccountName', 'Currency', 'CostThisMonth']]);
+  writeToSheet(sheet, acctDataMonth, 2, 1);
 
-  var sortRange = sheet.getRange("A:I");
-  sortRange.sort({column: 4, ascending: false});
-  
-  // Specify last report row
-   function getLastReportRow(sheet) {
-    var column = sheet.getRange('A:A');
-    var values = column.getValues(); // get all data in one call
-    var ct = 0;
-    while ( values[ct] && values[ct][0] != "" ) {
-      ct++;
-    }
-    return (ct+1);
-  } 
- var lastReportRow = getLastReportRow(sheet);
- Logger.log('lastReportRow: ' + lastReportRow);
-  
-  //////
-  // 3. Retrieving spend of YESTERDAY to match target against trend
-  //////
-  
-  var accountSelector = MccApp.accounts()  
-  .withCondition("LabelNames CONTAINS 'ACTIVE'")
-  .forDateRange("YESTERDAY")
-  .orderBy("Cost DESC"); 
-  
-  // Pushing account data into yesterdayCostContent array
-  var accountIterator = accountSelector.get(); 
-  var yesterdayCostContent = [];
-  while (accountIterator.hasNext()) {
-    var account = accountIterator.next();
-    var stats = account.getStatsFor(dateYesterdayNoHyphen, dateYesterdayNoHyphen);
-    var accountName = account.getName() ? account.getName() : '--';
-    yesterdayCostContent.push([account.getName(), stats.getCost()]);
-  }
- 
-  // Loop through array to write into spreadsheet
-  var yesterdayCostValArray = [];
-  var yesterdayCostRows = [];
-  
-  for (var i=0;i < yesterdayCostContent.length-1;i++) {
-    yesterdayCostRows=[];
-    for (var j=0; j< yesterdayCostContent[0].length;j++){
-      yesterdayCostRows.push(yesterdayCostContent[i][j]);
-    }
-    yesterdayCostValArray.push(yesterdayCostRows);
-  }
-  
-  var yesterdayCostRange = sheet.getRange(2, 19, i, j);
-  yesterdayCostRange.setValues(yesterdayCostValArray);
- 
- // Vlookup Yesterday Spend into column I
- for (var i=2;i < lastReportRow;i++) {
-   var cell = sheet.getRange(i,9);
-   cell.setFormula("=IFERROR(VLOOKUP(R[-0]C[-7],s:t,2,false),0)");
-   cell.setNumberFormat("0.00");
- } 
+  var acctDataYesterday = getAccountsStats("YESTERDAY", firstDayofMonthAndYesterday[1], firstDayofMonthAndYesterday[1]);
+  writeToSheet(sheet, acctDataYesterday, 2, 19);
+
+  var lastReportRow = getLastReportRow(sheet);
+  vlookupYesterdayCost(sheet, lastReportRow);
+  sortSheet(sheet, 4);
+
+  Logger.log('Report content successfully printed to spreadsheet.');
 
 }
 
+/////// Function definitions//////////////
+
+/** Generates all necessary date info, writes a date info sidebar to the sheet
+* @param {object} sheet
+* @return {array} datesArray, needed for the accountStats Getter
+*/
+function setTimeInfoSidebar(sheet) {
+
+  var currentDatewithHyphen = new Date().toJSON().slice(0,10);
+  var dateYesterdayArray = currentDatewithHyphen.split("-");
+  dateYesterdayArray[2] = dateYesterdayArray[2] - 1;
+  var dateYesterdayNoHyphen = new Date(new Date().setDate(new Date().getDate()-1)).toJSON().slice(0,10).replace(/-/g,'');
+  var firstDayOfCurrentMonth = dateYesterdayArray[0] + dateYesterdayArray[1] + '01';
+  var lastDayOfCurrentMonth = getLastDayofMonth(new Date().getMonth()+1,dateYesterdayArray[0]);
+  var lastDateOfCurrentMonth = dateYesterdayArray[0] + dateYesterdayArray[1] + lastDayOfCurrentMonth;
+  
+  var spreadsheetSidebar = [['CurrentDates', 'Values'],['dateYesterday', dateYesterdayNoHyphen],['currentMonth', dateYesterdayArray[1]], 
+                            ['currentYear', dateYesterdayArray[0]],['isNonLeapYear', isNonLeapYear(dateYesterdayArray[0])],
+                            ['lastDateOfCurrentMonth', lastDateOfCurrentMonth],['completedDays', dateYesterdayArray[2]],
+                            ['lastDayOfCurrentMonth', lastDayOfCurrentMonth],['numberOfRemainingDays', lastDayOfCurrentMonth - dateYesterdayArray[2]]];
+  sheet.getRange('l1:m9').setValues(spreadsheetSidebar);
+  
+  var datesArray = [firstDayOfCurrentMonth, dateYesterdayNoHyphen];
+  Logger.log("date info printed to sheet, datesArray: " + datesArray);
+  return datesArray;
+}
+
+
+/** NOTE: The function is written for two possible values, LAST_MONTH or YESTERDAY
+* @param {string} DATE_RANGE, according to AWQL specification
+* @param {date} DATES_ARRAY_VAL1, the start date of the stats range
+* @param {date} DATES_ARRAY_VAL2, the end date of the stats range
+* @return {array} accountStats
+*/
+function getAccountsStats(DATE_RANGE, DATES_ARRAY_VAL1, DATES_ARRAY_VAL2){
+  
+  var accountSelector = MccApp.accounts()  
+    .withCondition("LabelNames CONTAINS 'ACTIVE'")
+    .forDateRange(DATE_RANGE)
+    .orderBy("Cost DESC"); 
+    
+  var accountStats = [];
+  var accountIterator = accountSelector.get();
+  
+  while (accountIterator.hasNext()) {
+    var account = accountIterator.next();
+    var stats = account.getStatsFor(DATES_ARRAY_VAL1, DATES_ARRAY_VAL2);
+    var accountName = account.getName() ? account.getName() : '--';
+
+    var fieldArray = (DATE_RANGE == "LAST_MONTH") ? 
+      [account.getCustomerId(), account.getName(), account.getCurrencyCode(), stats.getCost()] : 
+      [account.getName(), stats.getCost()];
+    accountStats.push(fieldArray);
+  }
+  return accountStats;
+}
+
+/**
+@param {object} sheet
+@param {array} accountStats
+@param {array} START_CELL, a twodimensional array with [startRow, startColumn] as values
+@return void
+*/
+function writeToSheet(sheet, accountStats, START_ROW, START_COLUMN){
+  var destinationRange = sheet.getRange(START_ROW, START_COLUMN, accountStats.length, accountStats[0].length);
+  destinationRange.setValues(accountStats);
+}
+
+
+/**
+* @param {integer} currentYear
+* @return {boolean}
+*/
+function isNonLeapYear(currentYear) { 
+  if(currentYear % 4 === 0 || (currentYear % 400 === 0 && currentYear % 100 === 0)) {
+    return false;
+  } 
+  return true;
+}
+
+
+/**
+* @param {integer} monthAsInt
+* @param {integer} year
+* @return {integer} daysPerMonthLeapYear
+*/
+function getLastDayofMonth(monthAsInt, year) {
+  var daysPerMonthNonLeapYear = [0,31,28,31,30,31,30,31,31,30,31,30,31];
+  var daysPerMonthLeapYear =    [0,31,29,31,30,31,30,31,31,30,31,30,31];
+  
+  if (isNonLeapYear(year) == true) {
+    return daysPerMonthNonLeapYear[monthAsInt];
+  }
+  Logger.log("daysPerMonth: " + daysPerMonthLeapYear[monthAsInt]);
+  return daysPerMonthLeapYear[monthAsInt]; 
+}
+
+
+/**
+* @param {object} sheet
+* @return {integer} ct
+*/
+ function getLastReportRow(sheet) {
+  var column = sheet.getRange('A:A');
+  var values = column.getValues();
+  var ct = 0;
+  while ( values[ct] && values[ct][0] != "" ) {
+    ct++;
+  }
+  return (ct+1);
+} 
+
+
+/**
+* @param {object} sheet
+* @param {integer} lastReportRow
+* @return void 
+*/
+function vlookupYesterdayCost(sheet, lastReportRow) {
+  for (var i=2;i < lastReportRow;i++) {
+    var cell = sheet.getRange(i,9);
+    cell.setFormula("=IFERROR(VLOOKUP(R[-0]C[-7],s:t,2,false),0)");
+    cell.setNumberFormat("0.00");
+  } 
+}
+
+/**
+* @param {object} sheet
+* @param {integer} column
+* @return void
+*/
+function sortSheet(sheet, sortColumn) {
+  var sortRange = sheet.getRange("A:I");
+  sortRange.sort({column: sortColumn, ascending: false});
+}
