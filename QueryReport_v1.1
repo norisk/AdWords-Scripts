@@ -1,0 +1,361 @@
+/*
+*   AdWords Query Report
+*   Version: 1.1
+*   @author: Christopher Gutknecht
+*   norisk GmbH
+*   cgutknecht@noriskshop.de
+* . Demospreadsheet: https://docs.google.com/spreadsheets/d/1o8FYIs0p7jpwj4uSY334DKpDBhhHqWSkfj4HdD1-Mco/edit#gid=1866988447
+*
+*/
+function main() {
+   
+  /************ Configuration Block ************/
+  var URL = "DEMO_URL"; // insert URL of copied sheet here, @throws MalformedUrlException, 
+  var SHEET_NAMES = ["OVERVIEW", "1. ShoppingQrByTitle","2. ShoppingQrNotInTextCamp", "3. PaidOrganicQr", "4. TextQrNotAsKw"];
+  var ACCOUNT_NAME = "DEMO";
+  var NOTIFY = ["name@email.com"];
+  var TIMESPAN = "LAST_30_DAYS";   //Timespan @throws IOException
+  /****** 1. ****/
+  var CLICKS_THRESHOLD = 2;        //Minimum of clicks a search query needs to have. [Integer] @throws IOException
+  var COST_THRESHOLD = 1;
+  var SHOPPING_CAMPAIGN_NAME = "'Shop'"; //Shopping Campaign Identifier. Format: "'[identifier]'" @throws IOException
+  var TITLEFEED_URL = "FEED_URL"; // This feed MUST ONLY contain two columns: id (used in Shopping), title
+  var SEPARATOR = "\t";  // Column separator of title feed
+  var PRODUCT_ID_LENGTH = 12; // If length varies, ID can not be relilably extracted from product partition string
+  /****** 2. ****/
+  var BRAND_CAMPAIGN = "'brand__Brand'"; // Brand Campaign Identifier
+  
+  /****** 3. ****/
+  var REVENUE_THRESHOLD = 30;   //Minimum Conversions [Integer] @throws IOException
+  /************ Configuration Block ************/  
+
+  //////////////////////////  
+ //  0. Spreadsheet
+ ////////////////////////// 
+ var spreadsheet = SpreadsheetApp.openByUrl(URL);
+  
+ ////////////////////////// 
+ /// 1.  ShopQueriesByTitle
+ //////////////////////////
+  
+  var sQBTsheet = spreadsheet.getSheetByName(SHEET_NAMES[1]);
+  
+  var sQBTreport = AdWordsApp.report(
+    "SELECT CampaignName,AdGroupName, KeywordTextMatchingQuery, Query, Clicks, Cost, Ctr, ConversionRate, ConversionValue, CostPerConversion, Conversions " +
+    "FROM   SEARCH_QUERY_PERFORMANCE_REPORT " +
+    "WHERE  Clicks > " + CLICKS_THRESHOLD +" AND Cost > " + COST_THRESHOLD + " AND CampaignName CONTAINS_IGNORE_CASE " + SHOPPING_CAMPAIGN_NAME + " " +
+    "DURING " + TIMESPAN + " ");
+  
+  sQBTreport.exportToSheet(sQBTsheet);
+  
+  var sQBTlastReportRow = getLastReportRow(sQBTsheet);
+  var sQBTrowLength = sQBTlastReportRow - 2;
+  
+  setSQBTsheetFormulas(sQBTsheet, sQBTrowLength, PRODUCT_ID_LENGTH);
+  importTitleData(TITLEFEED_URL, SEPARATOR, sQBTsheet); 
+  setSQBTHeaders(sQBTsheet);
+  
+ Logger.log("Finished 1. sQBT .");
+  
+ ////////////////////////// 
+ /// 2.  Converting shopping queries not in text campaigns
+ //////////////////////////
+ 
+  var sQNATsheet = spreadsheet.getSheetByName(SHEET_NAMES[2]);
+  var sQNATreport = AdWordsApp.report(
+    "SELECT Query,Clicks,Cost,Ctr,Conversions,CostPerConversion,ConversionValue,CampaignId,AdGroupId " +
+    "FROM   SEARCH_QUERY_PERFORMANCE_REPORT " +   //Choose whatever report you want to export.
+    "WHERE  Clicks > "+ CLICKS_THRESHOLD + " AND Conversions > 0 AND ConversionValue > " + REVENUE_THRESHOLD + " AND CampaignName CONTAINS_IGNORE_CASE " + SHOPPING_CAMPAIGN_NAME + " " +
+    "DURING " + TIMESPAN + " ");
+  sQNATreport.exportToSheet(sQNATsheet);
+   
+  var rowIndex = 2;
+  var sQNATrows = sQNATreport.rows();
+  
+  sQNATsheet.getRange("J1:N1").setValues([["hasKeyword","CampaignName","CampaignIsActive","AdGroupName","AdGroupIsActive"]]);
+ 
+  try{
+    while (sQNATrows.hasNext()) {
+      var row = sQNATrows.next();
+      var query = row["Query"];
+      var adGroupId = row["AdGroupId"];
+      var clicks = row["Clicks"];
+      var costPerConversion = row["CostPerConversion"];
+      var nextColumnIndex = "J";
+      sQNATsheet.getRange(nextColumnIndex+rowIndex).setValue(sQNAThasKeyword(query));
+      sQNATgetParentStats(query,sQNATsheet,rowIndex);
+      rowIndex++;  
+    }
+  } catch(e) {Logger.log("There was an error with the hasKeyWord lookup. Moving on...")};
+  
+  
+ var sortRange = sQNATsheet.getRange("A:N");
+ sortRange.sort({column: 7, ascending: false}); 
+  
+ Logger.log("Finished 2. sQNAT .");
+ 
+ ////////////////////////// 
+ /// 3.  Paid and Organic Report
+ //////////////////////////
+
+  var pAGQreport = AdWordsApp.report(
+    "SELECT SearchQuery , KeywordTextMatchingQuery , AverageCpc , Clicks , OrganicClicks , CombinedAdsOrganicClicks , AveragePosition , OrganicAveragePosition , Impressions , OrganicImpressions , Ctr " +
+    "FROM   PAID_ORGANIC_QUERY_REPORT " +
+    "WHERE CampaignName DOES_NOT_CONTAIN " + BRAND_CAMPAIGN +  " AND CampaignStatus = ENABLED "+
+    "DURING " + TIMESPAN + " ");
+
+  var pAGQsheet = spreadsheet.getSheetByName(SHEET_NAMES[3]);
+  pAGQreport.exportToSheet(pAGQsheet);
+  try {
+    var pAGQlastReportRow = getLastReportRow(pAGQsheet);
+    var pAGQrowLength = pAGQlastReportRow - 2;
+    pAGQsheet.insertColumnsAfter(3,1);
+    
+    // Adding column SEA-SEO ratio
+    var cellRangeRatio = pAGQsheet.getRange(2,4,pAGQrowLength,1);
+    cellRangeRatio.setFormula("=iferror(E2/F2,E2)");
+    cellRangeRatio.setNumberFormat("0.0");
+    pAGQsheet.getRange("D1").setValue("SEA-SEO-Ratio")
+    .setBackground("yellow")
+    .setHorizontalAlignment("center");
+    
+    var sortRange = pAGQsheet.getRange("A:M");
+    sortRange.sort({column: 7, ascending: false});
+    
+    var cellRangeRev = pAGQsheet.getRange(2,13,pAGQrowLength,1);
+    cellRangeRev.setFormula("=iferror(iferror(vlookup(R[-0]C[-12],'2. ShoppingQrNotInTextCamp'!A:G,7,false),vlookup(R[-0]C[-12],'4. TextQrNotAsKw'!D:K,8,false)),0)");
+    cellRangeRev.setNumberFormat("0.0");
+    pAGQsheet.getRange("M1").setValue("ConversionValue");
+    pAGQsheet.deleteColumns(25, 1);
+  } catch (e) {
+    Logger.log("The Paid and Organic Report report contains no data. Please check your account settings. Moving on..");
+  }
+  
+  
+  Logger.log("Finished 3. paGQ .");    
+  
+ ////////////////////////// 
+ /// 4.  Text Queries Not As Keywords
+ //////////////////////////
+  
+  var tQNAKsheet = spreadsheet.getSheetByName(SHEET_NAMES[4]);
+  var tQNAKreport = AdWordsApp.report(
+      "SELECT CampaignName,AdGroupName, KeywordTextMatchingQuery, Query,Clicks,Cost,Ctr,Conversions,CostPerConversion,ConversionValue " +
+      "FROM   SEARCH_QUERY_PERFORMANCE_REPORT " +   //Choose whatever report you want to export.
+      "WHERE  Clicks > "+ CLICKS_THRESHOLD + " AND CampaignName DOES_NOT_CONTAIN " + BRAND_CAMPAIGN + " AND CampaignName DOES_NOT_CONTAIN " + SHOPPING_CAMPAIGN_NAME + " " +
+      "DURING " + TIMESPAN + " ");
+  tQNAKreport.exportToSheet(tQNAKsheet);
+  var tQNAKlastReportRow = getLastReportRow(tQNAKsheet);
+  var tQNAKrowLength = tQNAKlastReportRow - 2;
+  
+  setTQNAKsheetFormulas(tQNAKsheet,tQNAKrowLength);
+  
+  var sortRange = tQNAKsheet.getRange("A:K");
+  sortRange.sort({column: 7, ascending: false});
+
+  Logger.log("Finished 4. tQNAK .");
+  
+  ////////////////////////// 
+  /// 5.  OVERVIEW TAB
+  //////////////////////////
+  
+  ovSheet = spreadsheet.getSheetByName(SHEET_NAMES[0]);
+  ovSheet.getRange("c2").setValue(ACCOUNT_NAME + " - " + TIMESPAN);
+  ovSheet.getRange("d4").setValue("Clicks > " + CLICKS_THRESHOLD + " & Cost > " + COST_THRESHOLD).setFontSize(8);
+  ovSheet.getRange("d13").setValue("Clicks > " + CLICKS_THRESHOLD).setFontSize(8);
+  ovSheet.getRange("m4").setValue("Clicks > " + CLICKS_THRESHOLD + " & Conv > 0 & Revenue > " + REVENUE_THRESHOLD).setFontSize(8);
+  ovSheet.getRange("m13").setValue("Clicks > " + CLICKS_THRESHOLD).setFontSize(8);  
+  resetOvFormulas(ovSheet);
+  Logger.log("Finished 5. Overview .");  
+  
+  // sendNotificationEmail(NOTIFY, URL, ACCOUNT_NAME);
+  
+}
+
+
+////////////////////////// 
+/// FUNCTION DEFINITIONS
+//////////////////////////
+
+function setSQBTsheetFormulas(sheet,rowLength,idLength){
+  sheet.insertColumnsAfter(3,3);
+  sheet.insertColumnsAfter(7,1);
+  // COLUMN D: ProdGroup
+  var cellRangeD = sheet.getRange(2,4,rowLength,1);
+  cellRangeD.setFormula('=iferror(if(left(R[-0]C[-1],3)="URL",right(R[-0]C[-1],len(R[-0]C[-1])-(find("_id:",R[-0]C[-1],1)+4)),right(R[-0]C[-1],len(R[-0]C[-1])-(find("id==",R[-0]C[-1],1)+3))),R[-0]C[-1])');
+  
+  
+  // COLUMN E: ProdGrType
+  var cellRangeE = sheet.getRange(2,5,rowLength,1);
+  cellRangeE.setFormula('=iferror(if(AND(len(R[-0]C[-1])=' + idLength + ',find("brand",R[-0]C[-2],1)>0),"id",if(AND(find("brand",R[-0]C[-2],1)>0,ISERROR(find("product_type",R[-0]C[-2],1)>0),NOT(len(R[-0]C[-1])=' + idLength + ')),"brand",if(AND(find("product_type",R[-0]C[-2],1)>0,NOT(len(R[-0]C[-1])=' + idLength + ')),"categ","other"))),"other")');
+  // COLUMN F: MatchedTitle
+  var cellRangeF = sheet.getRange(2,6,rowLength,1);
+  cellRangeF.setFormula('=iferror(if(R[-0]C[-2]="*";"";VLOOKUP(R[-0]C[-2];S$2:T$50000;2;false));"")');
+  
+  // COLUMN H: StringMatch
+  var cellRangeH = sheet.getRange(2,8,rowLength,1);
+  cellRangeH.setFormula('=if(iferror(find(lower(R[-0]C[-1]),lower(R[-0]C[-2]),1),0)>0,"PartMatch","")');
+  
+}
+
+function setSQBTHeaders(sheet) {
+  var newColumnHeaders = [['ProdGroup','ProdGrType','MatchedTitle','Query','StringMatch']];
+  sheet.getRange('d1:h1').setValues(newColumnHeaders);
+  
+  var sortRange = sheet.getRange("A:O");
+  sortRange.sort({column: 10, ascending: false});
+  
+  var cellRangeA = sheet.getRange("d1:f1");
+  cellRangeA.setBackground("yellow");
+  cellRangeA.setHorizontalAlignment("center");
+  
+  sheet.deleteColumns(21, sheet.getMaxColumns() - 21);
+}
+
+function importTitleData(FEEDURL,SEPARATOR,sheet){
+  try {
+    // Parse price feed content into array
+    var spreadsheeturl = UrlFetchApp.fetch(FEEDURL);
+    var spreadsheetContent = Utilities.parseCsv(spreadsheeturl, SEPARATOR);
+    var destinationRange = sheet.getRange(1, 19, spreadsheetContent.length, spreadsheetContent[0].length);
+    destinationRange.setValues(spreadsheetContent);
+    Logger.log('Feedurl content printed to sheet.');
+  } 
+  catch (e) {
+    Logger.log('Price data couldnt be added.');
+  }
+}
+
+
+/*
+* @param spreadsheet {object}
+* @return {integer}
+*/
+function getLastReportRow(spreadsheet) {
+  var column = spreadsheet.getRange('A:A');
+  var values = column.getValues(); // get all data in one call
+  var ct = 0;
+  while ( values[ct] && values[ct][0] != "" ) {
+    ct++;
+  }
+  return (ct+1);
+}
+
+
+function sQNAThasKeyword(query) {
+  var keywordIterator = AdWordsApp.keywords()
+      .withCondition("Text = '" + query + "'")
+      .get();
+  return keywordIterator.hasNext();
+}
+
+function sQNATgetParentStats(query,spreadsheet,rowIndex){
+  if(sQNAThasKeyword(query)){
+    var keywordIterator = AdWordsApp.keywords().withCondition("Text = '" + query + "'").get();
+    while(keywordIterator.hasNext()){
+      var keyword = keywordIterator.next();
+      var campaignName = keyword.getCampaign().getName();
+      var campaignStat = keyword.getCampaign().isEnabled();
+      var adGroupName = keyword.getAdGroup().getName();
+      var adGroupStat = keyword.getAdGroup().isEnabled();
+      spreadsheet.getRange("K"+rowIndex+":N"+rowIndex).setValues([[campaignName,campaignStat,adGroupName,adGroupStat]]);
+    }
+  }
+}
+
+function setTQNAKsheetFormulas(sheet,rowLength){
+  sheet.insertColumnsAfter(4,1);
+  var cellRangeD = sheet.getRange(2,5,rowLength,1);
+  cellRangeD.setFormula('=R[-0]C[-1]=R[-0]C[-2]');
+  sheet.getRange("e1").setValue("kW=Query");
+  sheet.deleteColumns(12, 1);
+}
+
+function resetOvFormulas(ovSheet) {
+   ovSheet.getRange("b7:b10").setFormulas([
+    ["=COUNTIFS('1. ShoppingQrByTitle'!E:E,\"id\",'1. ShoppingQrByTitle'!H:H,\"PartMatch\")"],
+    ["=COUNTIFS('1. ShoppingQrByTitle'!E:E,\"id\",'1. ShoppingQrByTitle'!H:H,\"\")"],
+    ["=countif('1. ShoppingQrByTitle'!E:E,A9)"],
+    ["=countif('1. ShoppingQrByTitle'!E:E,A10)"]
+  ]);
+  
+  ovSheet.getRange("d7:d10").setFormulas([
+    ["=sumifs('1. ShoppingQrByTitle'!J:J,'1. ShoppingQrByTitle'!E:E,\"id\",'1. ShoppingQrByTitle'!H:H,\"PartMatch\")"],
+    ["=sumifs('1. ShoppingQrByTitle'!J:J,'1. ShoppingQrByTitle'!E:E,\"id\",'1. ShoppingQrByTitle'!H:H,\"\")"],
+    ["=sumif('1. ShoppingQrByTitle'!E:E,A9,'1. ShoppingQrByTitle'!J:J)"],
+    ["=sumif('1. ShoppingQrByTitle'!E:E,A10,'1. ShoppingQrByTitle'!J:J)"]
+  ]);
+  
+ ovSheet.getRange("f7:f10").setFormulas([
+   ["=sumifs('1. ShoppingQrByTitle'!M:M,'1. ShoppingQrByTitle'!E:E,\"id\",'1. ShoppingQrByTitle'!H:H,\"PartMatch\")"],
+   ["=sumifs('1. ShoppingQrByTitle'!M:M,'1. ShoppingQrByTitle'!E:E,\"id\",'1. ShoppingQrByTitle'!H:H,\"\")"],
+   ["=sumif('1. ShoppingQrByTitle'!E:E,A9,'1. ShoppingQrByTitle'!M:M)"],
+   ["=sumif('1. ShoppingQrByTitle'!E:E,A10,'1. ShoppingQrByTitle'!M:M)"]
+ ]);
+  
+ ovSheet.getRange("k7:k8").setFormulas([ 
+  ["=countif('2. ShoppingQrNotInTextCamp'!J:J,J7)"],
+  ["=countif('2. ShoppingQrNotInTextCamp'!J:J,J8)"]
+ ]);
+  
+ ovSheet.getRange("k11").setFormula("=countif('1. ShoppingQrByTitle'!M:M,\"=0\")");
+ ovSheet.getRange("m11").setFormula("=sumifs('1. ShoppingQrByTitle'!J:J,'1. ShoppingQrByTitle'!M:M,\"=0\",'1. ShoppingQrByTitle'!J:J,\">30\")");
+  
+ ovSheet.getRange("m7:m8").setFormulas([ 
+  ["=sumif('2. ShoppingQrNotInTextCamp'!J:J,J7,'2. ShoppingQrNotInTextCamp'!C:C)"],
+  ["=sumif('2. ShoppingQrNotInTextCamp'!J:J,J8,'2. ShoppingQrNotInTextCamp'!C:C)"]
+ ]); 
+  
+ ovSheet.getRange("o7:o8").setFormulas([ 
+  ["=sumif('2. ShoppingQrNotInTextCamp'!J:J,J7,'2. ShoppingQrNotInTextCamp'!G:G)"],
+  ["=sumif('2. ShoppingQrNotInTextCamp'!J:J,J8,'2. ShoppingQrNotInTextCamp'!G:G)"]
+ ]); 
+ 
+ ovSheet.getRange("k16:k17").setFormulas([
+   ["=COUNTif('4. TextQrNotAsKw'!K:K,\">0\")"],
+   ["=COUNTif('4. TextQrNotAsKw'!K:K,\"0\")"]
+ ]);
+  
+ ovSheet.getRange("m16:m17").setFormulas([ 
+   ["=sumif('4. TextQrNotAsKw'!K:K,\">0\",'4. TextQrNotAsKw'!G:G)"],
+   ["=sumif('4. TextQrNotAsKw'!K:K,\"=0\",'4. TextQrNotAsKw'!G:G)"]
+ ]);
+   
+ ovSheet.getRange("o16:o17").setFormulas([  
+   ["=sumif('4. TextQrNotAsKw'!K:K,\">0\",'4. TextQrNotAsKw'!K:K)"],
+   ["=sumif('4. TextQrNotAsKw'!K:K,\"=0\",'4. TextQrNotAsKw'!K:K)"]
+ ]);
+  
+ ovSheet.getRange("b16:b18").setFormulas([  
+   ["=countif('3. PaidOrganicQr'!D:D,\">3\")"],
+   ["=countifs('3. PaidOrganicQr'!D:D,\">=3\",'3. PaidOrganicQr'!D:D,\">=1\")"],
+   ["=countif('3. PaidOrganicQr'!D:D,\"<1\")"]  
+ ]); 
+  
+ ovSheet.getRange("d16:d18").setFormulas([ 
+   ["=sumif('3. PaidOrganicQr'!D:D,\">=3\",'3. PaidOrganicQr'!E:E)"],
+   ["=sumifs('3. PaidOrganicQr'!E:E,'3. PaidOrganicQr'!D:D,\"<3\",'3. PaidOrganicQr'!D:D,\">=1\")"],
+   ["=sumif('3. PaidOrganicQr'!D:D,\"<1\",'3. PaidOrganicQr'!E:E)"]   
+ ]); 
+  
+ ovSheet.getRange("f16:f18").setFormulas([  
+   ["=sumif('3. PaidOrganicQr'!D:D,\">=3\",'3. PaidOrganicQr'!M:M)"],
+   ["=sumifs('3. PaidOrganicQr'!M:M,'3. PaidOrganicQr'!D:D,\"<3\",'3. PaidOrganicQr'!D:D,\">=1\")"],
+   ["=sumif('3. PaidOrganicQr'!D:D,\"<1\",'3. PaidOrganicQr'!M:M)"]
+ ]);  
+  
+}
+
+
+function sendNotificationEmail(NOTIFY, SPREADSHEET_URL,ACCOUNT_NAME){    
+  var htmlBody = '<html><body>Your Paid & Organic Query Report for ' + ACCOUNT_NAME + ' is available at <br>' + SPREADSHEET_URL + '.</body></html>';
+  var date = new Date();
+  var subject = 'Paid & Organic Query Report for ' + ACCOUNT_NAME + ' ' + date;
+  var body = subject;
+  var options = { htmlBody : htmlBody };
+  
+  for(var i in NOTIFY) {
+    MailApp.sendEmail(NOTIFY[i], subject, body, options);
+    Logger.log("An Email has been sent.");
+  }
+}
