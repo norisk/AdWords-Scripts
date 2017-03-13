@@ -27,8 +27,8 @@
 */
 /***************** CONFIG_BLOCK START *****************/
  
-  // Find the spreadsheet here: https://docs.google.com/spreadsheets/d/15OfBFt3i0U-m-zyTXx2cWu8fu2CW1jiRe7J7H9qb2-0/edit#gid=850842802 
-  var SPREADSHEET_ID = '15OfBFt3i0U-m-zyTXx2cWu8fu2CW1jiRe7J7H9qb2-0';
+  // Find the demo spreadsheet here: https://docs.google.com/spreadsheets/d/1nPT1tL2EAh_KA1yIBuy-qelZpbvuvc8wE9Hshu4jdnA/edit
+  var SPREADSHEET_ID = 'SHEET-ID';
 
 /***************** CONFIG_BLOCK START *****************/
 
