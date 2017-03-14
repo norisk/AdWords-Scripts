@@ -1,0 +1,215 @@
+/**
+*   Merchant Center Dashboard
+*   Version: 1.1.0
+*   @author: Christopher Gutknecht
+*   norisk GmbH
+*   cgutknecht@noriskshop.de
+* 
+*   Demo-Spreadsheet Here: https://docs.google.com/spreadsheets/d/1SD-1xOeRxk5BRkGc-6WdFy2JQOMrC6ZqZguVoHoH-kQ/edit?usp=sharing
+*   >> Summary: This script appends Merchant data of single, STANDALONE Merchant Center account to the main spreadsheet. Can also be used in isolation
+*
+* THIS SOFTWARE IS PROVIDED BY norisk GMBH ''AS IS'' AND ANY
+* EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+* WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+* DISCLAIMED. IN NO EVENT SHALL norisk GMBH BE LIABLE FOR ANY
+* DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+* (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+* LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+* ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+* (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+* SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+// Reference https://developers.google.com/shopping-content/v2/reference/v2/
+
+function main() {
+  var singleAccountId = '1000000000';
+  var accountName = 'OnlineStore';
+  var accountArray = [[accountName,singleAccountId]];
+  var SPREADSHEET_ID = 'SHEET-ID'; // insert the ID of your copied sheet
+  var SHEETNAMES = ['feeds', 'errors', 'warnings', 'dataQualityIssues'];
+  
+  var feedArray = [];
+  feedArray = getFeedArray(accountArray);
+  
+  // 1. Write to Feed Sheet
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  printNewDataToSheet(SHEETNAMES[0], feedArray, 4);
+  
+  // 2.Write to Error Sheet
+  var feedErrorArray = getFeedErrorArray(accountArray);
+  printNewDataToSheet(SHEETNAMES[1], feedErrorArray, 5);
+  
+  // 3.Write to Warning Sheet
+  var feedWarningArray = getFeedWarningArray(accountArray);
+  printNewDataToSheet(SHEETNAMES[2], feedWarningArray, 5);
+  
+  // 4.Write to Data Quality Issue Sheet
+  var feedDataQualityArray = getFeedDataQualityArray(accountArray);
+  printNewDataToSheet(SHEETNAMES[3], feedDataQualityArray, 3);
+  
+
+  //////////
+  //// Helper Functions
+  //////////
+
+  function printNewDataToSheet(SHEETNAME,dataArray,sortColumn) {
+    var sheet = ss.getSheetByName(SHEETNAME);
+    var lastReportRow = getLastReportRow(SHEETNAME);
+    
+    var dataRange = sheet.getRange(lastReportRow, 1, dataArray.length, dataArray[0].length);
+    dataRange.setValues(dataArray);
+    var sortRange = sheet.getRange("A:I");
+    sortRange.sort({column: sortColumn, ascending: false});
+    
+    Logger.log(SHEETNAME + ' list successfully printed to ' + SHEETNAME + ' sheet.');  
+  } 
+  
+  
+  function getFeedArray(accountArray){
+    for(i=0;i<accountArray.length;i++) {
+      var datafeeds = ShoppingContent.Datafeeds.list(accountArray[i][1]);
+      for(j=0;j<datafeeds.resources.length;j++) {
+        var singlefeedInfo = [accountArray[i][0], datafeeds.resources[j].targetCountry,datafeeds.resources[j].fileName];
+        var dataFeedsStatuses = ShoppingContent.Datafeedstatuses.get(accountArray[i][1], datafeeds.resources[j].id);
+        singlefeedInfo.push(dataFeedsStatuses.itemsTotal,dataFeedsStatuses.itemsValid, dataFeedsStatuses.itemsTotal - dataFeedsStatuses.itemsValid, dataFeedsStatuses.processingStatus, dataFeedsStatuses.lastUploadDate.slice(0,10),
+          datafeeds.resources[j].fetchSchedule.hour + " Uhr");
+        feedArray.push(singlefeedInfo);
+      }
+    }
+    return feedArray;
+  } 
+  
+  /**
+  * @param {Array} a twodimensional list of account names and IDs.
+  * @return {Array} A twodimensional array of feed errors and related information.
+  */
+  function getFeedErrorArray(accountArray) {
+    var feedErrorArray = [];
+    
+    for(i=0; i < accountArray.length;i++) { // 1. START Iterate through all GMC accounts > return resources array
+      var dataFeedsStatuses = ShoppingContent.Datafeedstatuses.list(accountArray[i][1]);
+      
+      for(j=0;j < dataFeedsStatuses.resources.length;j++) { // 2. START Resource Iterator: Iterate through all resources aka feeds   
+        if(dataFeedsStatuses.resources[j].errors) { // 3. Check if errors exist
+          for(k=0;k < dataFeedsStatuses.resources[j].errors.length; k++) { // 3.a) START Error Iterator: Iterate through all errors
+            var singleFeedInfo = [];
+            singleFeedInfo.push(accountArray[i][0],dataFeedsStatuses.resources[j].datafeedId,
+                                dataFeedsStatuses.resources[j].errors[k].message.substring(0,100).replace("Insufficient product identifiers", "Insuff Product Ident").replace(',','\,'),
+                                dataFeedsStatuses.resources[j].errors[k].code.replace(',','\,'),
+                                dataFeedsStatuses.resources[j].errors[k].count);
+            var errorExampleMax = dataFeedsStatuses.resources[j].errors[k].examples.length > 3 ? 3 : dataFeedsStatuses.resources[j].errors[k].examples.length;
+            var exampleConcatString ='';
+            
+            for(m=0; m < errorExampleMax; m++) { // 3.a.1 START Concatenate error examples
+              var singleExampleValue = dataFeedsStatuses.resources[j].errors[k].examples[m].value ? dataFeedsStatuses.resources[j].errors[k].examples[m].value : 'noValue';
+              var singleExampleSuffix = m < errorExampleMax - 1 ? '\n' : '';
+              var singleExampleString = dataFeedsStatuses.resources[j].errors[k].examples[m].itemId + ': ' + singleExampleValue.substring(0,10).replace(',','\,') + singleExampleSuffix;
+              exampleConcatString += singleExampleString;
+            } // 3.a.1 END Concatenate error examples
+            singleFeedInfo.push(exampleConcatString);
+            feedErrorArray.push(singleFeedInfo);
+          } // 3.a) END Error Iterator
+        } 
+        else { // 3.b)) No Error Default Value
+          var singleFeedInfo = [];
+          singleFeedInfo.push(accountArray[i][0],dataFeedsStatuses.resources[j].datafeedId, 'no errors', '-', 0, 'no examples');
+          feedErrorArray.push(singleFeedInfo);
+        } // 3. END Error Iter
+      } // 2. END Resource Iter 
+    } // 1. END Account Iter
+    
+    return feedErrorArray; 
+  }
+  
+  /**
+  * @param {Array} a twodimensional list of account names and IDs.
+  * @return {Array} A twodimensional array of feed warnings and related information.
+  */
+  function getFeedWarningArray(accountArray) {
+    var feedWarningArray = [];
+    
+    for(i=0; i < accountArray.length;i++) { // 1. START Iterate through all GMC accounts > return resources array
+      var dataFeedsStatuses = ShoppingContent.Datafeedstatuses.list(accountArray[i][1]);
+      Logger.log("dataFeedsStatuses:" + dataFeedsStatuses.resources);
+      for(j=0;j < dataFeedsStatuses.resources.length;j++) { // 2. START Resource Iterator: Iterate through all resources aka feeds   
+        if(dataFeedsStatuses.resources[j].warnings) { // 3. Check if warnings exist
+          for(k=0;k < dataFeedsStatuses.resources[j].warnings.length; k++) { // 3.a) START warning Iterator: Iterate through all warnings
+            var singleFeedInfo = [];
+            singleFeedInfo.push(accountArray[i][0],dataFeedsStatuses.resources[j].datafeedId,
+                                dataFeedsStatuses.resources[j].warnings[k].message.substring(0,100).replace(',','\,'),
+                                dataFeedsStatuses.resources[j].warnings[k].code.replace(',','\,'),
+                                dataFeedsStatuses.resources[j].warnings[k].count);
+            var warningExampleMax = dataFeedsStatuses.resources[j].warnings[k].examples.length > 3 ? 3 : dataFeedsStatuses.resources[j].warnings[k].examples.length;
+            var exampleConcatString ='';
+            
+            for(m=0; m < warningExampleMax; m++) { // 3.a.1 START Concatenate warning examples
+              var singleExampleValue = dataFeedsStatuses.resources[j].warnings[k].examples[m].value ? dataFeedsStatuses.resources[j].warnings[k].examples[m].value : 'noValue';
+              var singleExampleSuffix = m < warningExampleMax - 1 ? '\n' : '';
+              var singleExampleString = dataFeedsStatuses.resources[j].warnings[k].examples[m].itemId + ': ' + singleExampleValue.substring(0,10).replace(',','\,') + singleExampleSuffix;
+              exampleConcatString += singleExampleString;
+            } // 3.a.1 END Concatenate warning examples
+            singleFeedInfo.push(exampleConcatString);
+            feedWarningArray.push(singleFeedInfo);
+          } // 3.a) END warning Iterator
+        } 
+        else { // 3.b)) No warning Default Value
+          var singleFeedInfo = [];
+          singleFeedInfo.push(accountArray[i][0],dataFeedsStatuses.resources[j].datafeedId, 'no warnings', '-', 0, 'no examples');
+          feedWarningArray.push(singleFeedInfo);
+        } // 3. END warning Iter
+      } // 2. END Resource Iter 
+    } // 1. END Account Iter
+    return feedWarningArray; 
+  }
+  
+  
+  /**
+  * @param {string} the account ID of the multi-client merchant center
+  * @return {Array} A twodimensional array of feed data quality issues and related information.
+  */
+  function getFeedDataQualityArray(accountArray) {
+    
+  var feedDataQualityArray = [];
+  var accountstatuses = ShoppingContent.Accountstatuses.get(accountArray[0][1], accountArray[0][1]);
+
+  if(accountstatuses.dataQualityIssues) { // 3. Check if issues exist
+    for(k=0;k < accountstatuses.dataQualityIssues.length; k++) { // 3.a) START issues Iterator: Iterate through all issues
+      var singleIssueInfo = [];
+      singleIssueInfo.push(accountArray[0][0], accountstatuses.dataQualityIssues[k].severity,
+                          accountstatuses.dataQualityIssues[k].numItems,
+                          accountstatuses.dataQualityIssues[k].id,
+                          accountstatuses.dataQualityIssues[k].lastChecked);
+      var issueExampleMax = accountstatuses.dataQualityIssues[k].exampleItems.length > 3 ? 3 : accountstatuses.dataQualityIssues[k].exampleItems.length;
+      var exampleConcatString ='';
+      
+      for(m=0; m < issueExampleMax; m++) { // 3.a.1 START Concatenate issue examples
+        var singleExampleValue = accountstatuses.dataQualityIssues[k].exampleItems[m].submittedValue ? accountstatuses.dataQualityIssues[k].exampleItems[m].submittedValue : 'noValue';
+        var singleExampleSuffix = m < issueExampleMax - 1 ? '\n' : '';
+        var singleExampleString = accountstatuses.dataQualityIssues[k].exampleItems[m].itemId + ': ' + singleExampleValue.substring(0,10).replace(',','\,') + singleExampleSuffix;
+        exampleConcatString += singleExampleString.replace('online:de:DE:','').replace('online:de:AT:','');
+      } // 3.a.1 END Concatenate issue examples
+      singleIssueInfo.push(exampleConcatString);
+      feedDataQualityArray.push(singleIssueInfo);
+    } // 3.a) END issue Iterator
+  } 
+  else { // 3.b)) No issue Default Value
+    var singleIssueInfo = [];
+    singleIssueInfo.push(accountArray[0][0],'none', 'none', 'no id', 'no examples');
+    feedWarningArray.push(singleIssueInfo);
+  } // 3. END issue Iter
+  
+  return feedDataQualityArray;
+}
+  
+  function getLastReportRow(SHEETNAME) {
+    var lastRowSheet = ss.getSheetByName(SHEETNAME);
+    var column = lastRowSheet.getRange('A:A');
+    var values = column.getValues(); // get all data in one call
+    var ct = 0;
+    while ( values[ct] && values[ct][0] != "" ) {
+      ct++;
+    }
+    return (ct+1);
+  }
+  
+}
