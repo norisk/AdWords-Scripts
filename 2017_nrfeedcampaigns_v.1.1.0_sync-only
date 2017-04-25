@@ -409,25 +409,6 @@ function FeedHandler(feedUrl, columnSeparator, columnMapper, campaignName) {
 
 function AdGroupHandler(campaignName, defaultBid) {
   this.campaignName = campaignName;
-
-  /**
-  * @param array adGroupList
-  * @param number defaultBid
-  * @return void
-  */
-  this.create = function(adGroupList,defaultBid) {
-    var campaign = AdWordsApp.campaigns().withCondition("Name = '" + campaignName + "'").get().next();
-    var labelName = this.getStatusLabel("ENABLED");
-    
-    Logger.log(" "); Logger.log("*****"); Logger.log("Starting to create " + adGroupList.length + " adGroups, first item: " + adGroupList[0]); Logger.log("*****"); Logger.log(" ");
-    
-    for(var i=0;i<adGroupList.length;i++) {
-      var adGroupBuilder = campaign.newAdGroupBuilder();
-      var adGroupOperation = adGroupBuilder.withName(adGroupList[i]).withCpc(defaultBid).withStatus("ENABLED").build();
-      adGroupOperation.getResult().applyLabel(labelName);
-      var adGroupResult = adGroupOperation.isSuccessful() ? adGroupOperation.isSuccessful() : adGroupOperation.getErrors();
-    }
-  };
   
   /**
   * @return adGroupList
