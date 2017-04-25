@@ -4,7 +4,11 @@
 * @author: Christopher Gutknecht
 * norisk GmbH
 * cgutknecht@noriskshop.de
+*
 * For full version including entity creation (adgroups, ads, keywords, sitelinks), please contact Christopher via email.
+* This script synchronizes adgroup statuses based on a specific, adwords business data feed format to create feed campaigns with ad customizers. 
+* Read more at noriskshop.de/category/adwords-scripts/
+* The feed format can be found here: http://bit.ly/norisk_demofeed_seacamp
 *
 * THIS SOFTWARE IS PROVIDED BY norisk GMBH ''AS IS'' AND ANY
 * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
@@ -28,7 +32,7 @@
 /************ START Configuration Block ************/  
 var SCRIPT_NAME = "nrFeedCampaigns 1.1.0.free_Brands";
 
-var FEED_URL = "http://transport.productsup.io/c14bf8a6e07e06d1d92c/channel/28745/lodenfrey_adw_export_BraCatGen.csv"; //URL of your business data feed.
+var FEED_URL = "FEEDURL"; //URL of your business data feed.
 var COLUMN_SEPARATOR = ",";
 var COLUMN_MAPPER = {       // USE (!) INDEX (!) of column , NOT column number! Index Starts at zero. Example: Third Column from left = index 2
   "discount (number)" : 2,
