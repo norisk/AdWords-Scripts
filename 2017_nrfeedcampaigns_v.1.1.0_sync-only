@@ -1,0 +1,590 @@
+/*
+* nrAdBuilder for Feedbased Campaigns (free, sync-only version)
+* Version: 1.1.0.free
+* @author: Christopher Gutknecht
+* norisk GmbH
+* cgutknecht@noriskshop.de
+* For full version including entity creation (adgroups, ads, keywords, sitelinks), please contact Christopher via email.
+*
+* THIS SOFTWARE IS PROVIDED BY norisk GMBH ''AS IS'' AND ANY
+* EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+* WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+* DISCLAIMED. IN NO EVENT SHALL norisk GMBH BE LIABLE FOR ANY
+* DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+* (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+* LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+* ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+* (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+* SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/* 
+* update 1.1 feature
+* - added campaign handler, enabling script to iterate through multiple campaigns
+* - changed adgroup label to "Activated_by_nrFeedCampaigns" and Paused, from "..._CatHandler"
+*/
+
+
+/************ START Configuration Block ************/  
+var SCRIPT_NAME = "nrFeedCampaigns 1.1.0.free_Brands";
+
+var FEED_URL = "http://transport.productsup.io/c14bf8a6e07e06d1d92c/channel/28745/lodenfrey_adw_export_BraCatGen.csv"; //URL of your business data feed.
+var COLUMN_SEPARATOR = ",";
+var COLUMN_MAPPER = {       // USE (!) INDEX (!) of column , NOT column number! Index Starts at zero. Example: Third Column from left = index 2
+  "discount (number)" : 2,
+  "headline (text)" : 5,
+  "keyword_full (text)" : 6,
+  "price_min (number)" : 8,
+  "sale_item_count (number)" : 9,
+  "Target ad group" : 11,
+  "Target campaign" : 12,
+  "aggregation_type (text)": 14
+};
+
+var CAMPAIGN_INFO_CONFIG = {
+  "campaign type" : "brand",  // legitimate values: aggregationType, brand, generic, sale;   
+  "brand campaign prefix" : "brand_", // CASE-SENSITIVE. Include full string with all characters eg "brand ||"
+  "generic campaign prefix" : "gen_",
+
+  "aggregation campaign" : "BM" ,  // Only (!) utilized, if campaign type is "aggregationType". Name must match feed column aggregation_type
+  "aggregation campaign name": "FeedAds_BraMod" // Only (!) utilized, if campaign type is "aggregationType".
+};
+
+/************ END Configuration Block ************/
+
+
+
+function main() {
+
+  
+  // 1.1 Get campaign list
+  var campaignHandler = new CampaignHandler(FEED_URL, COLUMN_SEPARATOR, COLUMN_MAPPER, CAMPAIGN_INFO_CONFIG);
+  var campaignList = campaignHandler.getCampaignNames();
+  
+  
+  for (var i = 0; i < campaignList.length; i++) { // START Campaign Iterator
+  
+    var campaignName = campaignList[i];
+    Logger.log(" ");Logger.log("*****"); Logger.log("*****"); Logger.log("STARTING STATUS SYNC for : " + campaignList[i]); Logger.log("*****"); Logger.log("*****"); Logger.log(" "); Logger.log(" ");
+    
+    // 1.2 Get feed data per campaign
+    var feedHandler = new FeedHandler(FEED_URL, COLUMN_SEPARATOR, COLUMN_MAPPER, campaignName);
+    
+    var fullAdGroupObjects = feedHandler.getAdGroupObjects();
+    var shouldBeActiveAdGroups = new AdGroupList(feedHandler.getAdGroupList(fullAdGroupObjects));
+    
+    var saleAdGroups = new AdGroupList(feedHandler.getSaleAdGroupList(fullAdGroupObjects));
+    var nonSaleAdGroups = new AdGroupList(feedHandler.getNonSaleAdGroupList(fullAdGroupObjects));
+    
+    // 2. Update adgroups & status
+    var adGroupHandler = new AdGroupHandler(campaignName);
+    
+    var currentAllAdGroups = new AdGroupList(adGroupHandler.getAll());
+    var currentActiveAdGroups = new AdGroupList(adGroupHandler.getByStatus("ENABLED"));
+    var currentPausedAdGroups = new AdGroupList(adGroupHandler.getByStatus("PAUSED"));
+    
+    var toBePausedAdGroups = currentActiveAdGroups.returnIfNotFoundIn(shouldBeActiveAdGroups.getList());
+    adGroupHandler.setStatus(toBePausedAdGroups, "PAUSED");
+    
+    var toBeActiveAdGroups = currentPausedAdGroups.returnIfFoundIn(shouldBeActiveAdGroups.getList());
+    adGroupHandler.setStatus(toBeActiveAdGroups, "ENABLED");
+
+    
+  } // END Campaign Iterator
+  
+}
+
+
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+////////////////// PROTOTYPES & METHODS ////////////////////
+////////////////////////////////////////////////////////////
+
+/* INDEX of Prototypes
+* 0. CampaignHandler: gets all required and existing campaigns, returns campaigns to be newly added
+* 1. Feedhandler: gets all data necessary from feed, ie campaign, adgroup, keyword, price, discount, sale_items etc
+* 2.1 AdGroupHandler: creates, gets and sets by status
+* 2.2 AdGrouplist: stores a list and compares it with another
+*/
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+
+
+////////////////
+// 0. CAMPAIGNHANDLER @prototype
+////////////////
+
+function CampaignHandler(feedUrl, columnSeparator, columnMapper, campaignInfoConfig) {
+  this.feedContent = Utilities.parseCsv(UrlFetchApp.fetch(feedUrl), columnSeparator);
+  this.columnMapper = columnMapper;
+  this.campaignInfoConfig = campaignInfoConfig;
+  this.missingCampaigns;
+  
+  /**
+  * @return bool true
+  * @throws error ColumnMismatchError
+  */
+  this.campaignColumnValidator = function() {
+    var headerColumn = this.feedContent[0];
+
+    if(headerColumn[this.columnMapper["Target campaign"]] != "Target campaign") {
+      throw new Error("ColumnMismatchError: the campaign column is not as expected, please check your column mapper and use index notation (starting at 0)."); 
+    }
+    else Logger.log("columnValidator = true");
+    
+    if(!this.campaignInfoConfigValidator()) throw new Error("CampaignConfigMismatchError: Please check your campaign info configuration object");
+    
+    return true;
+  }
+  
+  
+  /**
+  * @return bool true
+  * throws error CampaignConfigContradiction
+  */
+  this.campaignInfoConfigValidator = function() {
+    // not implemented yet, not necessary yet
+    return true;
+  }
+  
+  /**
+  * @return array validatedCampaignList
+  * @throws error ColumnMismatchError
+  * @throws exception UnknownCampaignType
+  */
+  this.getCampaignNames = function() {
+               
+    if(!this.campaignColumnValidator()) {
+      throw new Error("ColumnMismatchError: Please validate your column mapper against your feed columns.");
+    }
+    var campaignType = this.campaignInfoConfig["campaign type"];
+    var inputCampaignList = [];
+    
+    switch(campaignType) {
+      case "brand":
+        inputCampaignList = this.getBrands();
+        break;
+      case "generic":
+        inputCampaignList = this.getTopCategories();
+        break;
+      case "aggregationType":
+        inputCampaignList = new Array(this.campaignInfoConfig["aggregation campaign name"]);
+        break;    
+      default:
+        Logger.log("Unknown Campaign Type - Trying to get campaign names: The value in 'campaign type' didn't match one of three values: brand, generic or aggregationType.");
+    } // end switch statement
+    
+    var validatedCampaignList = this.removeMissingCampaigns(inputCampaignList);
+    Logger.log("validatedCampaignList:" + validatedCampaignList); Logger.log(" ");
+    
+    return validatedCampaignList;
+  }
+
+  /**
+  * @return array brandList
+  */
+  this.getBrands = function() {
+    Logger.log("Getting BRAND campaign names...");
+    var brandList = [];
+
+    for(i=1;i<this.feedContent.length;i++){
+      var listItem = this.feedContent[i];
+
+      var campaignPrefix = this.campaignInfoConfig["brand campaign prefix"];
+      var campaignName = listItem[columnMapper["Target campaign"]];
+      
+      // Check if campaign 1. contains brand prefix and 2. if not already in brandlist
+      if(campaignName.search(campaignPrefix) != -1 && brandList.indexOf(campaignName) == -1) {
+        brandList.push(campaignName);
+      }
+    }
+    Logger.log("BRAND campaign list found in feed : " + brandList); Logger.log(" ");
+    
+    return brandList;
+  }
+
+
+  /**
+  * @param array inputList
+  * @return array campaignList
+  */
+  this.getTopCategories = function() {
+    Logger.log("Getting CATEGORY campaign names...");
+    var categoryList = [];
+
+    for(i=1;i<this.feedContent.length;i++){
+      var listItem = this.feedContent[i];
+      var campaignPrefix = this.campaignListConfig["generic campaign prefix"];
+      var campaignName = listItem[columnMapper["Target campaign"]];
+
+      // Check if campaign 1. contains brand prefix and 2. if not already in brandlist
+      if(campaignName.indexOf(campaignPrefix) != -1 && categoryList.indexOf(campaignName) == -1) {
+        categoryList.push(campaignName);
+      }
+    }
+     
+    Logger.log("CATEGORY campaign list found in feed : " + categoryList); Logger.log(" ");
+    return categoryList;
+  }
+  
+  /*
+  * @param array inputCampaignList
+  * @return array validatedCampaignNames
+  */
+  this.removeMissingCampaigns = function(inputCampaignList) {
+    
+    var campaignNames = inputCampaignList;
+    var missingCampaigns = [];
+    var indicesOfItemsToBeRemoved = [];
+
+    for(var i=0; i<campaignNames.length; i++){
+      var campaignSelector = AdWordsApp.campaigns().withCondition("Name = '" + campaignNames[i] + "'");
+    
+      if(campaignSelector.get().totalNumEntities() == 0) {
+        Logger.log("MissingCampaignError: The campaign '" + campaignNames[i] + "' has not been created yet. Adw Scripts can not create campaigns, please create or rename in feed!");
+        
+        missingCampaigns.push(campaignNames[i]);
+        indicesOfItemsToBeRemoved.push(i);
+      }
+    }
+    
+    this.missingCampaigns = missingCampaigns;
+    if(missingCampaigns.length > 0) {
+      ERROR_SUMMARY_OBJECT.missingCampaigns = this.missingCampaigns;
+      this.writeToErrorLog(missingCampaigns);
+      
+      Logger.log("The following campaigns need to be created, or names to be adjusted: " + missingCampaigns + ". An error summary email will be triggered at the end."); 
+    }
+    
+    var validatedCampaignNames = this.removeArrayByIndices(campaignNames, indicesOfItemsToBeRemoved);
+
+    return validatedCampaignNames;
+  }
+
+  /*
+  * @param array fullList
+  * @param array arrayOfIndices
+  * @return array reducedList
+  */
+  this.removeArrayByIndices = function(fullList, arrayOfIndices) {
+    var reducedList = fullList;
+
+    Logger.log("IndicesArray of missing campaigns:" + arrayOfIndices.length);
+
+    for(var i=0; i<arrayOfIndices.length; i++) {
+      reducedList.splice(arrayOfIndices[i],1);
+    }
+    Logger.log("reducedList : " + reducedList);
+    return reducedList;
+  }
+  
+  /*
+  * @param array missingCampaigns
+  * @return void
+  */
+  this.writeToErrorLog = function(missingCampaigns) {
+    for(var i=0; i < missingCampaigns.length; i++) {
+      var errorRow = [TIME_STAMP, "Camp", "NotFound", "Feed campaign name not found in AdWords",missingCampaigns[i] ,"","","","","","","","","","","","","","","",""];   
+      Logger.log("campaignErrorRow: " + errorRow);
+      ERROR_LOG.push(errorRow);
+    }
+  }
+  
+} // END 0. CAMPAIGNHANDLER
+  
+
+
+////////////////
+// 1. FEEDHANDLER @prototype
+////////////////
+
+function FeedHandler(feedUrl, columnSeparator, columnMapper, campaignName) {
+  this.feedColSeparator = columnSeparator;
+  this.feedContent = Utilities.parseCsv(UrlFetchApp.fetch(feedUrl), columnSeparator);
+  this.columnMapper = columnMapper;
+  this.campaignName = campaignName;
+  
+  /**
+  * @return bool true, if all columns match
+  */
+  this.columnValidator = function() {
+    var headerColumn = this.feedContent[0];
+    Logger.log("feedhHeaderColumn: " + headerColumn);
+    var expectedColName;
+
+    for(i=0; i < Object.keys(this.columnMapper).length; i++) {
+      expectedColName = Object.keys(this.columnMapper)[i];
+
+      if(headerColumn[this.columnMapper[expectedColName]] != expectedColName) {
+        Logger.log("columnValidator = false"); 
+        return false;
+      } else continue;
+    }
+    Logger.log("columnValidator = true");
+    return true;
+  }
+  
+
+  /**
+  * @return array adGroups, onedim array of objects
+  * @throws error columMismatchError
+  */
+  
+  this.getAdGroupObjects = function() {
+    var adGroupObjects = [];
+    var columnMapper = this.columnMapper;
+    if(!this.columnValidator()) {
+      throw new Error("ColumnMismatchError: Please validate your column mapper against your feed columns.");
+    }
+    for(i=1;i<this.feedContent.length;i++){
+      var listItem = this.feedContent[i];
+      adGroupObject = {
+        adGroup : listItem[columnMapper["Target ad group"]],
+        campaign : listItem[columnMapper["Target campaign"]],
+        headline : listItem[columnMapper["headline (text)"]],
+        kwWithUnderscore : listItem[columnMapper["keyword_full (text)"]],
+        discount : listItem[columnMapper["discount (number)"]],
+        minPrice : listItem[columnMapper["price_min (number)"]],
+        saleItems : listItem[columnMapper["sale_item_count (number)"]],
+        aggregationType : listItem[columnMapper["aggregation_type (text)"]]
+      };
+
+      if(adGroupObject.campaign != this.campaignName) {
+        continue;
+      } else
+      adGroupObjects.push(adGroupObject);
+    }
+    Logger.log("adGroupObjects.length : " + adGroupObjects.length + " with campaignName " + this.campaignName); Logger.log(" ");
+    return adGroupObjects;
+  }
+  
+  /**
+  * @param array adGroupObjects,
+  * @return array adGroupList, a list of adGroup names
+  */
+  this.getAdGroupList = function(adGroupObjects) {
+    var adGroupList = adGroupObjects.map(function(adGroupObject, index, adGroupObjects) {
+      return adGroupObject.adGroup;
+    });
+    return adGroupList;
+  }
+
+  /**
+  * @param array adGroupObjects,
+  * @return array adGroupList, a list of adGroup names with min 2 (!) sale items
+  */
+  this.getSaleAdGroupList = function(adGroupObjects) {
+    var saleAdGroupList = [];
+    for(i=0; i < adGroupObjects.length; i++) {
+      if(adGroupObjects[i].saleItems > 1) saleAdGroupList.push(adGroupObjects[i].adGroup)
+    }
+    return saleAdGroupList;
+  }
+  
+  /**
+  * @param array adGroupObjects,
+  * @return array nonSaleaAdGroupList, a list of adGroup names with no sale items
+  */
+  this.getNonSaleAdGroupList = function(adGroupObjects) {
+    var nonSaleAdGroupList = [];
+    for(i=0; i < adGroupObjects.length; i++) {
+      if(adGroupObjects[i].saleItems < 2) nonSaleAdGroupList.push(adGroupObjects[i].adGroup)
+    }
+    return nonSaleAdGroupList;
+  }
+}
+
+
+////////////////
+// 2.1 ADGROUPHANDLER @prototype
+////////////////
+
+function AdGroupHandler(campaignName, defaultBid) {
+  this.campaignName = campaignName;
+
+  /**
+  * @param array adGroupList
+  * @param number defaultBid
+  * @return void
+  */
+  this.create = function(adGroupList,defaultBid) {
+    var campaign = AdWordsApp.campaigns().withCondition("Name = '" + campaignName + "'").get().next();
+    var labelName = this.getStatusLabel("ENABLED");
+    
+    Logger.log(" "); Logger.log("*****"); Logger.log("Starting to create " + adGroupList.length + " adGroups, first item: " + adGroupList[0]); Logger.log("*****"); Logger.log(" ");
+    
+    for(var i=0;i<adGroupList.length;i++) {
+      var adGroupBuilder = campaign.newAdGroupBuilder();
+      var adGroupOperation = adGroupBuilder.withName(adGroupList[i]).withCpc(defaultBid).withStatus("ENABLED").build();
+      adGroupOperation.getResult().applyLabel(labelName);
+      var adGroupResult = adGroupOperation.isSuccessful() ? adGroupOperation.isSuccessful() : adGroupOperation.getErrors();
+    }
+  };
+  
+  /**
+  * @return adGroupList
+  */
+  this.getAll = function() {
+    var adGroupList = [];
+    var adGroupIterator = AdWordsApp.adGroups().withCondition("CampaignName = '" + campaignName + "'").get();
+
+    while (adGroupIterator.hasNext()) {
+      var adGroup = adGroupIterator.next();
+      adGroupList.push(adGroup.getName());
+    }
+    Logger.log("Total number of adgroups : " + adGroupList.length); 
+    Logger.log("First example item: " + adGroupList[0]);
+    
+    return adGroupList;
+   };
+  
+  
+  /**
+  * @param string status
+  * @return array adGroupList
+  */
+  this.getByStatus = function(status) {
+    var adGroupList = [];
+    var adGroupIterator = // ad groups with no handler label (manually paused) are skipped!
+      AdWordsApp.adGroups().withCondition("CampaignName = '" + campaignName + "'").withCondition("Status = " + status).withCondition("LabelNames CONTAINS_ANY ['" + this.getStatusLabel(status) + "']").get();
+
+    while (adGroupIterator.hasNext()) {
+      var adGroup = adGroupIterator.next();
+      adGroupList.push(adGroup.getName());
+    }
+    Logger.log("Currently with Status " + status + ": " + adGroupList.length + ". First item: " + adGroupList[0]);
+    
+    return adGroupList;
+   };
+  
+  /**
+  * @param array adGroupList
+  * @param string status
+  * @return void
+  * @todo include operation.getErrors
+  * @todo add updateLabel method and check for errors
+  */
+  this.setStatus = function(adGroupList, status) {
+    
+    var labelName = this.getStatusLabel(status);
+    Logger.log("Setting status " + status + " to " + adGroupList.length + " adGroups, first item: " + adGroupList[0]); Logger.log("");
+  
+    for(var i=0; i<adGroupList.length; i++) {
+      if(adGroupList.length = 0) {
+        Logger.log("setStatus: No adgroup statuses to be updated.");
+        break;
+      }
+      
+      var adGroupIterator = AdWordsApp.adGroups()
+        .withCondition("Name CONTAINS_IGNORE_CASE '" + adGroupList[i] + "'")
+        .withCondition("CampaignName = '" + this.campaignName + "'")
+        .get();
+      
+      while (adGroupIterator.hasNext()) {
+        var adGroup = adGroupIterator.next();
+        status == "ENABLED" ? adGroup.enable() : adGroup.pause(); 
+        adGroup.applyLabel(labelName);
+        adGroup.removeLabel(labelName == "Activated_by_nrFeedCamps" ? "Paused_by_nrFeedCamps" : "Activated_by_nrFeedCamps");
+      }
+    }
+  };
+  
+  /**
+  * @param string status
+  * @return string labelName
+  */
+  this.getStatusLabel = function(status) { 
+    var labelName = status == "ENABLED" ? "Activated_by_nrFeedCamps": "Paused_by_nrFeedCamps";
+    try {
+      var existingLabel = AdWordsApp.labels().withCondition('Name = "' + labelName + '"').get().next();
+    } catch (e) {
+      var newLabel = AdWordsApp.createLabel(labelName);
+    }
+    return labelName;
+  }
+}
+
+
+////////////////
+// 2.2 ADGROUPLIST @prototype
+////////////////
+
+function AdGroupList(list) {
+  this.listContent = list;
+  this.getList = function() {
+    return this.listContent;
+  };
+
+  /**
+  * @param object referenceList
+  * @return array diffList
+  */
+  this.returnIfFoundIn = function(referenceList) { 
+    var diffList = [];
+    for(var i=0;i<this.listContent.length;i++){
+      var listItem = this.listContent[i].toString();  
+      if(referenceList.indexOf(listItem)!=-1)
+        diffList.push(listItem);
+      else continue;
+    }
+    Logger.log("returnIfFoundIn diffList: Length = " + diffList.length + "; First item: " + diffList[0]);
+    return diffList;
+  };
+  
+  /**
+  * @param object referenceObject
+  * @return array diffList
+  */
+  this.returnIfNotFoundIn = function(referenceList) {
+    var diffList = [];
+    for(var i=0;i<this.listContent.length;i++){
+      var listItem = this.listContent[i].toString();
+      if(referenceList.indexOf(listItem)==-1)
+        diffList.push(listItem);
+      else continue;
+    }
+    Logger.log("returnIfNotFoundIn diffList: Length = " + diffList.length + "; First item: " + diffList[0]);
+    return diffList;
+  }; 
+  
+  /**
+  * @param array fullObjectList
+  * @return array filteredObjectList, object list based on listContent as reference list
+  * @todo add throws exception NonMatchingInput exception, arrays do not have the same length
+  */
+  this.getObjectsFrom = function(fullObjectList) {
+    var filteredObjectList = [];
+
+    Logger.log("getObjectsFrom method: fullObjectList.length: " + fullObjectList.length);
+    for(var i=0;i < fullObjectList.length;i++){
+      var singleAdGroup = fullObjectList[i].adGroup;  
+      if(this.listContent.indexOf(singleAdGroup)!=-1)
+        filteredObjectList.push(fullObjectList[i]);
+      else continue;
+    }
+    Logger.log("getObjectsByAdGroupFrom > filteredObjectList: Length = " + filteredObjectList.length + "; First item:"); Logger.log(filteredObjectList[0]); Logger.log(" ");
+    return filteredObjectList;
+  };
+}
+
+/************* BUG FIX LOG 1.0.x **********************/
+
+/* 
+* update 1.0.1 fix: 
+* - Fixed parsing error when adgroup length = 0
+* - Fixed iterator reached end issue with while (iterator.hasNext())
+*/
+
+/************* FEATURES TO BE IMPLEMENTED**********************/
+
+/* TODO for v1.2
+* - write get(Non)SaleAdGroupList methods
+* - use SET_ADS object in AdHandler
+* - write update all ads method
+* - send email alert for every error
+* - add negative kw handler: Damen, Herren, Sale
+*/
