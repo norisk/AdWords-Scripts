@@ -298,7 +298,7 @@ function resetOvFormulas(ovSheet) {
   ["=countif('2. ShoppingQrNotInTextCamp'!J:J,J8)"]
  ]);
   
- ovSheet.getRange("k11").setFormula("=countif('1. ShoppingQrByTitle'!M:M,\"=0\")");
+ ovSheet.getRange("k11").setFormula("=COUNTIFS('1. ShoppingQrByTitle'!M:M,\"=0\",'1. ShoppingQrByTitle'!J:J,\">30\")“); 
  ovSheet.getRange("m11").setFormula("=sumifs('1. ShoppingQrByTitle'!J:J,'1. ShoppingQrByTitle'!M:M,\"=0\",'1. ShoppingQrByTitle'!J:J,\">30\")");
   
  ovSheet.getRange("m7:m8").setFormulas([ 
