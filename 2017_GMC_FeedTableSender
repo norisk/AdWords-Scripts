@@ -1,0 +1,71 @@
+function gmcFeedTableSender() {
+  
+  // CONFIG START
+  var SHEET_URL = "$$ Spreadsheet-URL $$";  // Example: https://docs.google.com/spreadsheets/d/1SD-1xOeRxk5BRkGc-6WdFy2JQOMrC6ZqZguVoHoH-kQ/edit#gid=0
+  var SHEET_ID = "$$ Spreadsheet-ID $$"; //  // Example: 1SD-1xOeRxk5BRkGc-6WdFy2JQOMrC6ZqZguVoHoH-kQ
+  var SHEET_NAME = "feeds";
+  var RECIPIENT = ["name@email.com"];
+  var SCRIPT_NAME = 'GMC-Overview_Email';
+  // CONFIG END
+  
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var spreadsheet = ss.getSheetByName(SHEET_NAME);
+   
+  var range = spreadsheet.getRange(2, 1, getLastReportRow(spreadsheet), 9); 
+  var feedData = range.getValues();
+  
+  sendArrayAsEmail(SCRIPT_NAME,feedData,RECIPIENT,SHEET_URL);
+ 
+  // FUNCTION DEFINITIONS
+  function sendArrayAsEmail(SCRIPT_NAME, printArray, RECIPIENT, SHEET_URL) {
+   
+   var currentdate = new Date(); 
+   var datetime = currentdate.getDate() + "."
+                + (currentdate.getMonth()+1)  + "." 
+                + currentdate.getFullYear() + " , "  
+                + currentdate.getHours() + ":"  
+                + currentdate.getMinutes();
+     
+    var subject = SCRIPT_NAME + ': Summary Results for ' + datetime;
+    var body = subject;
+    var htmlBody = '<html><body><br><br> >>> Please check the <b>ITEM ERRORS (!)</b> per row.<br><br>';
+    htmlBody += '<table border="1" width="95%" style="border-collapse:collapse;">';
+    
+    htmlBody += "<tr>";
+    for(var i=0; i<printArray[0].length; i++){
+      htmlBody += '<td align="center">'+printArray[0][i]+'</td>';
+    }
+    htmlBody += "<tr>";
+    
+    for(var i=1; i<printArray.length; i++) {
+          htmlBody += "<tr>";
+          for(var j=0; j<printArray[i].length; j++){
+              htmlBody += "<td>"+printArray[i][j]+"</td>";
+          }
+          htmlBody += "</tr>";
+    }
+    
+    htmlBody += '<br/ ><br/ >';
+    htmlBody += "</table></html></body>";
+    var options = { htmlBody : htmlBody };
+    for(var i in RECIPIENT) {
+      MailApp.sendEmail(RECIPIENT[i], subject, body, options);
+      Logger.log('Email sent to ' + RECIPIENT[i]);
+    }
+    Logger.log("Done in full!");
+  }
+  
+  /*
+  * @param spreadsheet {object}
+  * @return {integer}
+  */
+  function getLastReportRow(spreadsheet) {
+    var column = spreadsheet.getRange('A:A');
+    var values = column.getValues(); // get all data in one call
+    var ct = 0;
+    while ( values[ct] && values[ct][0] != "" ) {
+      ct++;
+    }
+    return (ct+1);
+  } 
+}
