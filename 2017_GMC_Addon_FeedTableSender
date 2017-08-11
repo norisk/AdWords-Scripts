@@ -1,3 +1,10 @@
+/** 
+* Helper Function: HTML Table Sender
+* @author: Christopher Gutknecht 
+* norisk GmbH 
+* cgutknecht@noriskshop.de
+*/
+
 function main() {
   
   // CONFIG START
