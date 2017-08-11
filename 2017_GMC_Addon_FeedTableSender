@@ -1,4 +1,4 @@
-function gmcFeedTableSender() {
+function main() {
   
   // CONFIG START
   var SHEET_URL = "$$ Spreadsheet-URL $$";  // Example: https://docs.google.com/spreadsheets/d/1SD-1xOeRxk5BRkGc-6WdFy2JQOMrC6ZqZguVoHoH-kQ/edit#gid=0
